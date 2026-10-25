@@ -37,11 +37,17 @@
   #dock button:hover, #dock button:focus-visible, #dock button[aria-pressed="true"] { background: rgba(124,92,255,.25); }
   .hint { position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%); margin: 0;
     color: var(--muted); font-size: 12px; pointer-events: none; white-space: nowrap; }
-  #panel { position: fixed; top: 16px; right: 16px; bottom: 16px; width: min(420px, calc(100vw - 32px));
-    overflow-y: auto; padding: 22px 22px 28px; border-radius: 18px; background: var(--glass);
-    border: 1px solid var(--line); backdrop-filter: blur(14px); transform: translateX(calc(100% + 24px));
-    transition: transform .45s cubic-bezier(.2,.8,.2,1); }
-  #panel.open { transform: none; }
+  #backdrop { position: fixed; inset: 0; background: radial-gradient(circle, rgba(4,5,12,.35), rgba(4,5,12,.75));
+    opacity: 0; pointer-events: none; transition: opacity .35s; }
+  #backdrop.open { opacity: 1; pointer-events: auto; }
+  #backdrop { z-index: 2; } #panel { z-index: 4; } #dock { z-index: 3; }
+  #panel { position: fixed; left: 50%; top: 50%; width: min(560px, calc(100vw - 32px)); max-height: min(80vh, 720px);
+    overflow-y: auto; padding: 24px 26px 30px; border-radius: 20px; background: rgba(12,15,30,.88);
+    border: 1px solid rgba(124,92,255,.3); backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 70px rgba(124,92,255,.22);
+    opacity: 0; pointer-events: none; transform: translate(-50%, -44%) scale(.9);
+    transition: opacity .3s, transform .5s cubic-bezier(.2,.9,.25,1.2); }
+  #panel.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
   #panel h2 { margin: 0 0 4px; font-size: 24px; }
   #panel .kicker { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: .12em;
     text-transform: uppercase; color: var(--accent2); }
@@ -67,7 +73,6 @@
   #close:hover { color: var(--ink); background: rgba(255,255,255,.08); }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
   @media (max-width: 700px) {
-    #panel { top: auto; left: 16px; right: 16px; width: auto; max-height: 62vh; transform: translateY(calc(100% + 24px)); }
     .hint { display: none; }
   }
 </style>
@@ -83,7 +88,8 @@
 <div id="labels"></div>
 <p class="hint">Drag to orbit · scroll to zoom · click anything that glows</p>
 <nav id="dock" aria-label="Sections"></nav>
-<aside id="panel" aria-live="polite"><button id="close" aria-label="Close">×</button><div id="panel-body"></div></aside>
+<div id="backdrop"></div>
+<aside id="panel" role="dialog" aria-modal="true" aria-live="polite"><button id="close" aria-label="Close">×</button><div id="panel-body"></div></aside>
 
 <script type="importmap">
 { "imports": {
@@ -505,11 +511,16 @@ const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
 let focused = null, flying = false, hovered = null;
 const wantPos = new THREE.Vector3(), wantTarget = new THREE.Vector3(), tmpV = new THREE.Vector3(), side = new THREE.Vector3();
 
+const backdrop = document.getElementById('backdrop');
+let popTimer;
+function showPanel(on) { panel.classList.toggle('open', on); backdrop.classList.toggle('open', on); }
 function focus(id) {
   focused = entries.find(e => e.id === id);
-  body.innerHTML = focused.html();
-  body.scrollTop = 0; panel.scrollTop = 0;
-  panel.classList.add('open');
+  // Fly in first, then pop the card up in the middle.
+  showPanel(false);
+  clearTimeout(popTimer);
+  const f = focused;
+  popTimer = setTimeout(() => { body.innerHTML = f.html(); panel.scrollTop = 0; showPanel(true); }, 650);
   entries.forEach(e => e.btn && e.btn.setAttribute('aria-pressed', e === focused || (focused.kind === 'project' && e.id === 'projects')));
   controls.autoRotate = false;
   flying = true;
@@ -517,13 +528,15 @@ function focus(id) {
 }
 function unfocus() {
   focused = null;
-  panel.classList.remove('open');
+  clearTimeout(popTimer);
+  showPanel(false);
   entries.forEach(e => e.btn && e.btn.setAttribute('aria-pressed', false));
   wantPos.copy(HOME_POS); wantTarget.copy(HOME_TARGET);
   controls.autoRotate = !reduceMotion;
   flying = true;
 }
 document.getElementById('close').onclick = unfocus;
+backdrop.onclick = unfocus;
 body.addEventListener('click', e => { const go = e.target.closest('[data-go]'); if (go) focus(go.dataset.go); });
 addEventListener('keydown', e => { if (e.key === 'Escape') unfocus(); });
 controls.addEventListener('start', () => { flying = false; });
@@ -579,11 +592,6 @@ renderer.setAnimationLoop(() => {
     // Moons: come in from the side so their planet's glow isn't the whole backdrop.
     if (focused.around) tmpV.add(side.crossVectors(tmpV, camera.up).multiplyScalar(1.6)).normalize();
     wantPos.copy(wantTarget).add(tmpV.multiplyScalar(focused.fit)).add(tmpV.set(0, focused.fit * .4, 0));
-    // On wide screens, shift the view so the object isn't hidden under the panel.
-    if (innerWidth > 700) {
-      side.subVectors(wantTarget, wantPos).cross(camera.up).normalize().multiplyScalar(focused.fit * .32);
-      wantPos.add(side); wantTarget.add(side);
-    }
   }
   if (flying) {
     const k = 1 - Math.pow(.015, dt);
