@@ -12,8 +12,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #05070f; --ink: #e8ecf8; --muted: #8b93ad; --line: rgba(255,255,255,.1);
-    --glass: rgba(14,18,34,.72); --accent: #7c5cff; --accent2: #22d3ee;
+    --bg: #04050c; --ink: #e8ecf8; --muted: #8b93ad; --line: rgba(255,255,255,.1);
+    --glass: rgba(12,15,30,.72); --accent: #7c5cff; --accent2: #22d3ee;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--ink);
@@ -25,10 +25,11 @@
   .hud p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
   .hud .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--accent2); }
   #labels { position: fixed; inset: 0; pointer-events: none; }
-  .label { position: absolute; transform: translate(-50%, -150%); pointer-events: auto; cursor: pointer;
+  .label { position: absolute; transform: translate(-50%, -170%); pointer-events: auto; cursor: pointer;
     font: 500 13px 'Space Grotesk', sans-serif; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
-    background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(6px); transition: opacity .2s; }
-  .label:hover { border-color: var(--accent2); }
+    background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(6px); transition: opacity .25s, border-color .2s; }
+  .label:hover, .label.hot { border-color: var(--accent2); }
+  .label.moon { font-size: 11px; padding: 2px 8px; transform: translate(-50%, -150%); }
   #dock { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px;
     padding: 6px; border-radius: 14px; background: var(--glass); border: 1px solid var(--line);
     backdrop-filter: blur(10px); max-width: calc(100vw - 32px); overflow-x: auto; }
@@ -52,6 +53,16 @@
   .chip { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line); color: #c9cfe2; }
   .stat { font-size: 44px; font-weight: 700; line-height: 1; background: linear-gradient(90deg, var(--accent), var(--accent2));
     -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .card { all: unset; display: block; box-sizing: border-box; width: 100%; cursor: pointer; margin-top: 10px; padding: 12px 14px;
+    border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.03); transition: border-color .2s, background .2s; }
+  .card:hover, .card:focus-visible { border-color: var(--accent2); background: rgba(34,211,238,.06); }
+  .card b { display: block; font-size: 14px; }
+  .card span { color: var(--muted); font-size: 12px; }
+  .cta { display: inline-block; margin-top: 18px; padding: 10px 16px; border-radius: 10px; text-decoration: none;
+    color: #fff; font-weight: 500; background: linear-gradient(90deg, var(--accent), #2563eb); }
+  .back { all: unset; cursor: pointer; font-size: 12px; color: var(--muted); margin-bottom: 10px; display: inline-block; }
+  .back:hover { color: var(--ink); }
+  .emoji { font-size: 40px; line-height: 1; margin: 6px 0; }
   #close { all: unset; cursor: pointer; float: right; font-size: 22px; line-height: 1; padding: 2px 8px; border-radius: 8px; color: var(--muted); }
   #close:hover { color: var(--ink); background: rgba(255,255,255,.08); }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
@@ -70,7 +81,7 @@
   <p>AI Engineer · LLMs, RAG &amp; agentic systems · Surrey, UK</p>
 </header>
 <div id="labels"></div>
-<p class="hint">Drag to orbit · scroll to zoom · click a planet</p>
+<p class="hint">Drag to orbit · scroll to zoom · click anything that glows</p>
 <nav id="dock" aria-label="Sections"></nav>
 <aside id="panel" aria-live="polite"><button id="close" aria-label="Close">×</button><div id="panel-body"></div></aside>
 
@@ -83,17 +94,54 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const GH = 'https://github.com/mohansree14/';
 const KORNIA_PRS = 'https://github.com/kornia/kornia/pulls?q=is%3Apr+author%3Amohansree14+is%3Amerged';
+const chips = s => s.split(' ').map(w => `<span class="chip">${w.replace(/_/g, ' ')}</span>`).join('');
+
+// ---------- Content ----------
+const PROJECTS = [
+  { id: 'bayes', title: 'Bayesian Deep Learning Forecasting', emoji: '📈', color: 0x22d3ee, geo: 'ico', repo: 'Bayesian-Deep-Learning-for-Probabilistic-Financial-Forecasting',
+    blurb: 'Forecasts that know how unsure they are',
+    desc: 'LSTM and Transformer baselines against Pyro variational inference and MC Dropout on 10 years of daily market data with 21 engineered features. Scored on NLL, 95% coverage (94.3% / 95.1%) and sharpness as well as RMSE. The finding: the Transformer had the best point accuracy but the least usable uncertainty.',
+    tags: 'Pyro MC_Dropout LSTM Transformer Optuna MLflow Docker Streamlit' },
+  { id: 'agent', title: 'Multi-Agent Sourcing & Matching Agent', emoji: '🤖', color: 0xa78bfa, geo: 'dodeca', repo: 'linkedin_sourcing_agent',
+    blurb: 'Runner-up, Synapse AI Hackathon',
+    desc: 'Agents with tool calling that parse unstructured candidate profiles into ranked matches, behind a FastAPI backend, with export to Excel and Google Sheets. Runner-up at the Synapse AI Hackathon.',
+    tags: 'FastAPI Gemini OpenAI Tool_calling Agents' },
+  { id: 'fraud', title: 'AI Fraud Detection Interface', emoji: '🛡️', color: 0xf472b6, geo: 'octa', repo: 'explainable-ai-fraud-detection',
+    blurb: 'RAG that spots scam messages',
+    desc: 'Paste a suspicious message and get an assessment of whether it looks fraudulent. Retrieval-augmented generation over FAISS, prompt engineering and structured output validation.',
+    tags: 'RAG FAISS Prompt_engineering Structured_outputs' },
+  { id: 'ner', title: 'Biomedical Token Classification', emoji: '🧪', color: 0x34d399, geo: 'tetra', repo: 'Token-Classification',
+    blurb: 'BioBERT NER · F1 0.84',
+    desc: 'BioBERT fine-tuned on PLOD-CW-25 to find abbreviations and long forms in biomedical text, reaching F1 0.84 on held-out data. Served in a Streamlit app with colour-coded token predictions.',
+    tags: 'BioBERT Hugging_Face NLP Streamlit' },
+  { id: 'fitting', title: 'AI Virtual Fitting Room', emoji: '👕', color: 0xfbbf24, geo: 'box', repo: 'Virtual-Fitting-Room',
+    blurb: '2D photo → 3D try-on (published)',
+    desc: 'GANs, TensorFlow and OpenCV reconstruct a 3D model of the user from a single 2D image, with AR try-on and a Django backend for web and mobile. My published B.Tech major project.',
+    tags: 'GANs TensorFlow OpenCV AR Django' },
+  { id: 'vr', title: 'Fruit Blitz VR', emoji: '🥽', color: 0xfb7185, geo: 'torus', repo: 'fruit-blitz-vr',
+    blurb: 'Fruit Ninja, in VR',
+    desc: 'A Unity VR game: slice flying fruit with XR controllers, build combos, avoid hazards and restart fast. Includes the spawning, slicing, scoring and UI scripts plus ready-to-run scenes.',
+    tags: 'Unity C# XR VR' },
+  { id: 'alz', title: "Alzheimer's Prediction with GNNs", emoji: '🧬', color: 0x60a5fa, geo: 'cone', repo: 'Prediction-of-Cellular-Mechanisms-Alzheimer--Disease',
+    blurb: 'MSc dissertation · Distinction',
+    desc: "Hybrid deep learning and graph neural networks for Alzheimer's disease prediction from single-cell RNA-seq data, with SHAP interpretability. Large-scale processing on Azure ML. Awarded a Distinction and published.",
+    tags: 'GNNs scRNA-seq SHAP PyTorch Azure_ML' },
+];
 
 const SECTIONS = [
-  { id: 'about', title: 'About', color: 0x7c5cff, orbit: 9, size: 1.1, speed: .22, html: `
+  { id: 'about', title: 'About', color: 0x7c5cff, orbit: 10, fit: 7, speed: .2, html: () => `
     <div class="kicker">Hello, world</div><h2>About me</h2>
     <p>I build AI systems that people actually use: LLM apps, RAG pipelines and agentic workflows, with a habit of chasing bugs down to the maths.</p>
     <p>I lead a four-person AI team at Workforce Training &amp; Development, and I contribute autograd fixes to Kornia, the PyTorch computer-vision library.</p>
     <div class="chips"><span class="chip">📍 Guildford, Surrey</span><span class="chip">🎓 MSc AI, Surrey</span><span class="chip">🧠 LLMs · RAG · Agents</span></div>` },
-  { id: 'experience', title: 'Experience', color: 0x22d3ee, orbit: 13, size: 1.4, speed: .16, html: `
+  { id: 'experience', title: 'Experience', color: 0x22d3ee, orbit: 15, fit: 7.5, speed: .15, html: () => `
     <div class="kicker">Career orbit</div><h2>Experience</h2>
     <h3>AI Automation Trainer · Lead of the AI team</h3><div class="meta">Workforce Training &amp; Development · London · Jun 2026 – now</div>
     <ul><li>Lead the four-person AI team, reporting to the CEO.</li>
@@ -108,220 +156,464 @@ const SECTIONS = [
     <li>Dockerised and deployed on AWS Lambda and S3.</li></ul>
     <h3>Machine Learning Engineer Intern</h3><div class="meta">DLK Technology · Jun – Aug 2023</div>
     <ul><li>Time-series sales forecasting and anomaly detection on large-scale B2B data.</li></ul>` },
-  { id: 'opensource', title: 'Open Source', color: 0xf472b6, orbit: 17, size: 1.25, speed: .12, html: `
+  { id: 'opensource', title: 'Open Source', color: 0xf472b6, orbit: 20, fit: 7, speed: .11, html: () => `
     <div class="kicker">Kornia · PyTorch CV library · ~10k ★</div><h2>Open Source</h2>
-    <div class="stat" id="pr-count">19</div><div class="meta">merged PRs, all maintainer-reviewed · <a href="${KORNIA_PRS}" target="_blank" rel="noopener">see them all ↗</a></div>
+    <div class="stat">${prCount}</div><div class="meta">merged PRs, all maintainer-reviewed. Each spark orbiting the crystal is one. <a href="${KORNIA_PRS}" target="_blank" rel="noopener">See them all ↗</a></div>
     <h3>Closed a bug open since 2021</h3>
     <p><code>Boxes3D.to_tensor</code> had blocked autograd since 2021. I showed the gradcheck failure was a false positive at a 4-way vertex tie, not a wrong gradient. <a href="https://github.com/kornia/kornia/pull/4184" target="_blank" rel="noopener">PR #4184</a></p>
     <h3>Finite gradients at the identity</h3>
     <p>SO(3), SE(3) and SE(2) exp/log all returned <code>nan</code> gradients at the identity, the usual start point for pose optimisation. I fixed all five maps and filled in the gradcheck tests that had been left as TODO stubs. <a href="https://github.com/kornia/kornia/pull/4405" target="_blank" rel="noopener">PR #4405</a></p>
     <h3>Silent float16 underflow</h3>
     <p><code>distance_transform</code> returned wrong distances in half precision at its own defaults. Fixed after two rounds of review. <a href="https://github.com/kornia/kornia/pull/4158" target="_blank" rel="noopener">PR #4158</a></p>` },
-  { id: 'projects', title: 'Projects', color: 0x34d399, orbit: 21, size: 1.6, speed: .09, html: `
+  { id: 'projects', title: 'Projects', color: 0x34d399, orbit: 27, fit: 13, speed: .07, html: () => `
     <div class="kicker">Things I built</div><h2>Projects</h2>
-    <h3><a href="${GH}Bayesian-Deep-Learning-for-Probabilistic-Financial-Forecasting" target="_blank" rel="noopener">Bayesian Deep Learning for Probabilistic Forecasting ↗</a></h3>
-    <p>LSTM and Transformer baselines against Pyro variational inference and MC Dropout, scored on NLL, 95% coverage and sharpness. The Transformer had the best point accuracy but the least usable uncertainty.</p>
-    <h3><a href="${GH}linkedin_sourcing_agent" target="_blank" rel="noopener">Multi-Agent Sourcing &amp; Matching Agent ↗</a></h3>
-    <p>FastAPI, Gemini and OpenAI tool calling to turn unstructured profiles into ranked matches. <b>Runner-up, Synapse AI Hackathon.</b></p>
-    <h3><a href="${GH}explainable-ai-fraud-detection" target="_blank" rel="noopener">AI Fraud Detection Interface ↗</a></h3>
-    <p>RAG over FAISS with prompt engineering and structured validation.</p>
-    <h3><a href="${GH}Token-Classification" target="_blank" rel="noopener">Biomedical Token Classification ↗</a></h3>
-    <p>BioBERT fine-tuned on PLOD-CW-25: F1 0.84 on held-out data, served in a Streamlit app.</p>
-    <h3><a href="${GH}Virtual-Fitting-Room" target="_blank" rel="noopener">AI Virtual Fitting Room ↗</a></h3>
-    <p>GANs and OpenCV reconstruct a 3D body model from one 2D image, with AR try-on and a Django backend.</p>
-    <h3><a href="${GH}fruit-blitz-vr" target="_blank" rel="noopener">Fruit Blitz VR ↗</a></h3>
-    <p>A Unity VR take on Fruit Ninja with XR controller slicing, combos and scoring.</p>` },
-  { id: 'research', title: 'Research', color: 0xfbbf24, orbit: 25, size: 1.0, speed: .07, html: `
+    <p>Each moon is a project. Click one in space or pick it here.</p>
+    ${PROJECTS.map(p => `<button class="card" data-go="${p.id}"><b>${p.emoji} ${p.title}</b><span>${p.blurb}</span></button>`).join('')}` },
+  { id: 'research', title: 'Research', color: 0xfbbf24, orbit: 34, fit: 7, speed: .055, html: () => `
     <div class="kicker">Papers &amp; study</div><h2>Research &amp; Education</h2>
     <h3>MSc Artificial Intelligence</h3><div class="meta">University of Surrey · 2025 – Feb 2026</div>
-    <p>Dissertation (<b>Distinction</b>, published): <i>Hybrid Deep Learning and Graph Neural Networks for Alzheimer's Disease Prediction using scRNA-seq Data</i>, with SHAP interpretability. <a href="${GH}Prediction-of-Cellular-Mechanisms-Alzheimer--Disease" target="_blank" rel="noopener">Code ↗</a></p>
+    <p>Dissertation (<b>Distinction</b>, published): <i>Hybrid Deep Learning and Graph Neural Networks for Alzheimer's Disease Prediction using scRNA-seq Data</i>, with SHAP interpretability. <button class="back" data-go="alz">Open the project →</button></p>
     <h3>B.Tech AI &amp; Data Science</h3><div class="meta">Anna University · First Class · 2021 – 2024</div>
     <p>Major project (published): an AI-powered virtual fitting room built on GANs.</p>
     <h3>Highlights</h3>
     <ul><li>Two published research papers</li><li>Runner-up, Synapse AI Hackathon</li><li>Distinction (90%) in AR/VR coursework, Surrey</li></ul>` },
-  { id: 'stack', title: 'Tech Stack', color: 0x60a5fa, orbit: 29, size: 1.3, speed: .05, html: `
+  { id: 'stack', title: 'Tech Stack', color: 0x60a5fa, orbit: 40, fit: 7, speed: .045, html: () => `
     <div class="kicker">Toolbox</div><h2>Tech Stack</h2>
     <h3>AI &amp; ML</h3><div class="chips">${chips('PyTorch TensorFlow scikit-learn Hugging_Face Pyro OpenCV YOLO CLIP GANs MLflow Optuna')}</div>
     <h3>LLMs &amp; Retrieval</h3><div class="chips">${chips('OpenAI Gemini Claude RAG FAISS pgvector Prompt_engineering')}</div>
     <h3>Engineering</h3><div class="chips">${chips('Python TypeScript JavaScript SQL FastAPI Django React Node.js Redis')}</div>
     <h3>Cloud &amp; Ops</h3><div class="chips">${chips('Docker AWS_Lambda AWS_S3 Azure_ML Linux CI/CD pytest')}</div>
     <h3>Automation</h3><div class="chips">${chips('n8n Zapier Make Claude_Code Cursor')}</div>` },
-  { id: 'contact', title: 'Contact', color: 0xa78bfa, orbit: 33, size: .9, speed: .04, html: `
-    <div class="kicker">Say hi</div><h2>Contact</h2>
+  { id: 'contact', title: 'Contact', color: 0xa78bfa, orbit: 46, fit: 6.5, speed: .035, html: () => `
+    <div class="kicker">Signal open</div><h2>Contact</h2>
     <p>Open to AI engineering roles in the UK.</p>
     <ul><li><a href="https://github.com/mohansree14" target="_blank" rel="noopener">github.com/mohansree14</a></li>
     <li><a href="https://www.linkedin.com/in/mohansree-vijyakumar/" target="_blank" rel="noopener">linkedin.com/in/mohansree-vijyakumar</a></li>
     <li><a href="https://mohansree.vercel.app/" target="_blank" rel="noopener">mohansree.vercel.app</a></li>
     <li><a href="mailto:mohansreevijayakumar@gmail.com">mohansreevijayakumar@gmail.com</a></li></ul>` },
 ];
-function chips(s) { return s.split(' ').map(w => `<span class="chip">${w.replace(/_/g, ' ')}</span>`).join(''); }
 
+const projectHtml = p => `
+  <button class="back" data-go="projects">← All projects</button>
+  <div class="kicker">Project</div><div class="emoji">${p.emoji}</div><h2>${p.title}</h2>
+  <div class="meta">${p.blurb}</div>
+  <p>${p.desc}</p>
+  <div class="chips">${chips(p.tags)}</div>
+  <a class="cta" href="${GH}${p.repo}" target="_blank" rel="noopener">View on GitHub ↗</a>`;
+
+// ---------- Scene ----------
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x05070f, .006);
-const camera = new THREE.PerspectiveCamera(55, 1, .1, 1000);
-const HOME_POS = new THREE.Vector3(0, 22, 52), HOME_TARGET = new THREE.Vector3();
+const camera = new THREE.PerspectiveCamera(55, 1, .1, 2000);
+const HOME_POS = new THREE.Vector3(0, 22, 56), HOME_TARGET = new THREE.Vector3();
 camera.position.copy(HOME_POS);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
-controls.minDistance = 6; controls.maxDistance = 110;
-controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = .35;
+controls.minDistance = 3; controls.maxDistance = 160;
+controls.autoRotate = !reduceMotion; controls.autoRotateSpeed = .3;
 
-scene.add(new THREE.AmbientLight(0xffffff, .35));
-const sun = new THREE.PointLight(0xb9a8ff, 400, 0, 1.6);
-scene.add(sun);
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), .95, .55, .12);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
-// Starfield
+scene.add(new THREE.AmbientLight(0xffffff, .3));
+scene.add(new THREE.PointLight(0xc4b5fd, 600, 0, 1.6));
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const updaters = []; // (t, dt) => void, run every frame
+const std = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: .5, roughness: .3, metalness: .4, ...extra });
+const glow = (color, opacity = 1) => new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false });
+const wire = (color, opacity = .3) => new THREE.MeshBasicMaterial({ color, wireframe: true, transparent: true, opacity });
+
+// Soft round sprite so points aren't squares
+function dot() {
+  const c = document.createElement('canvas'); c.width = c.height = 32;
+  const x = c.getContext('2d'), g = x.createRadialGradient(16, 16, 0, 16, 16, 16);
+  g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+  return new THREE.CanvasTexture(c);
+}
+
+// Stars
 {
-  const n = 4000, pos = new Float32Array(n * 3);
+  const n = 5000, pos = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) pos.set(new THREE.Vector3().randomDirection().multiplyScalar(rand(250, 700)).toArray(), i * 3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const stars = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, map: dot(), alphaTest: .01, transparent: true, opacity: .7, depthWrite: false }));
+  scene.add(stars);
+  updaters.push((t, dt) => { stars.rotation.y += dt * .004; });
+}
+
+// Nebula clouds
+{
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d'), gr = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(.4, 'rgba(255,255,255,.25)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = gr; x.fillRect(0, 0, 128, 128);
+  const tex = new THREE.CanvasTexture(c);
+  [[0x7c3aed, -180, 40, -300], [0x0891b2, 220, -30, -260], [0xdb2777, 60, 120, -380], [0x4338ca, -260, -80, 120]].forEach(([col, ...p]) => {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, color: col, transparent: true, opacity: .22, blending: THREE.AdditiveBlending, depthWrite: false }));
+    s.position.set(...p); s.scale.setScalar(320);
+    scene.add(s);
+  });
+}
+
+// Shooting star
+{
+  const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(-10, 0, 0)]);
+  const m = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0 });
+  const line = new THREE.Line(g, m), dir = new THREE.Vector3(), X = new THREE.Vector3(1, 0, 0);
+  scene.add(line);
+  let age = 99;
+  updaters.push((t, dt) => {
+    age += dt;
+    if (age > rand(3, 7)) {
+      age = 0;
+      line.position.set(rand(-200, 200), rand(40, 120), rand(-250, -100));
+      dir.set(rand(.5, 1) * (Math.random() < .5 ? -1 : 1), rand(-.6, -.2), rand(-.2, .2)).normalize();
+      line.quaternion.setFromUnitVectors(X, dir);
+    }
+    line.position.addScaledVector(dir, dt * 140);
+    m.opacity = Math.max(0, 1 - age / 1.1);
+  });
+}
+
+// Core: a spiral galaxy around a bright heart
+{
+  const core = new THREE.Group();
+  const n = 7000, pos = new Float32Array(n * 3), col = new Float32Array(n * 3);
+  const inner = new THREE.Color(0xe0d7ff), outer = new THREE.Color(0x22d3ee), tmp = new THREE.Color();
   for (let i = 0; i < n; i++) {
-    const v = new THREE.Vector3().randomDirection().multiplyScalar(150 + Math.random() * 250);
-    pos.set([v.x, v.y, v.z], i * 3);
+    const r = Math.pow(Math.random(), 1.6) * 7 + .4, a = (i % 3) * Math.PI * 2 / 3 + r * .9 + rand(-.35, .35) * (1 + r * .1);
+    pos.set([Math.cos(a) * r + rand(-.2, .2), rand(-.25, .25) * (1 - r / 8), Math.sin(a) * r + rand(-.2, .2)], i * 3);
+    tmp.copy(inner).lerp(outer, r / 7.4).multiplyScalar(.85);
+    col.set([tmp.r, tmp.g, tmp.b], i * 3);
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: .9, transparent: true, opacity: .8 })));
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const galaxy = new THREE.Points(g, new THREE.PointsMaterial({ size: .09, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  core.add(galaxy);
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(.9, 32, 32), new THREE.MeshBasicMaterial({ color: 0xf0eaff }));
+  const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(2, 1), wire(0x7c5cff, .35));
+  core.add(heart, shell);
+  core.rotation.x = .25;
+  scene.add(core);
+  updaters.push((t, dt) => {
+    galaxy.rotation.y += dt * .18;
+    shell.rotation.y -= dt * .2; shell.rotation.z += dt * .1;
+    heart.scale.setScalar(1 + Math.sin(t * 2) * .08);
+  });
 }
 
-// Core: "me" as a glowing wireframe neural sphere
-const core = new THREE.Group();
-core.add(new THREE.Mesh(new THREE.IcosahedronGeometry(3, 1), new THREE.MeshBasicMaterial({ color: 0x7c5cff, wireframe: true, transparent: true, opacity: .55 })));
-core.add(new THREE.Mesh(new THREE.SphereGeometry(2.2, 48, 48), new THREE.MeshBasicMaterial({ color: 0x2a1f66 })));
-core.add(new THREE.Mesh(new THREE.IcosahedronGeometry(3.6, 2), new THREE.MeshBasicMaterial({ color: 0x22d3ee, wireframe: true, transparent: true, opacity: .12 })));
-scene.add(core);
+// ---------- Section objects: each one is its own little machine ----------
+const BUILD = {
+  about(c) { // glowing torus knot inside a wire shell
+    const g = new THREE.Group();
+    const knot = new THREE.Mesh(new THREE.TorusKnotGeometry(.8, .24, 180, 24, 2, 3), std(c, { emissiveIntensity: .7 }));
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(1.6, 1), wire(c, .2));
+    g.add(knot, shell);
+    updaters.push((t, dt) => { knot.rotation.x += dt * .6; knot.rotation.y += dt * .4; shell.rotation.y -= dt * .15; });
+    return { group: g, size: 1.6 };
+  },
+  experience(c) { // gyroscope: career rings turning on their own axes
+    const g = new THREE.Group();
+    const rings = [1.5, 1.15, .8].map((r, i) => {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(r, .06, 16, 100), std([c, 0x7dd3fc, 0xa5f3fc][i], { emissiveIntensity: .9 }));
+      g.add(m); return m;
+    });
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(.35, 24, 24), glow(0xffffff)));
+    updaters.push((t, dt) => {
+      rings[0].rotation.x += dt * .7; rings[1].rotation.y += dt * 1.1; rings[2].rotation.x -= dt * 1.4; rings[2].rotation.z += dt * .6;
+    });
+    return { group: g, size: 1.6 };
+  },
+  opensource(c) { // crystal with one orbiting spark per merged PR
+    const g = new THREE.Group();
+    const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(1.1, 0), std(c, { flatShading: true, emissiveIntensity: .6 }));
+    crystal.scale.y = 1.5;
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(crystal.geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .6 }));
+    edges.scale.copy(crystal.scale);
+    const MAX = 80, pos = new Float32Array(MAX * 3), seeds = Array.from({ length: MAX }, () => [rand(1.6, 2.4), rand(0, Math.PI * 2), rand(-.6, .6), rand(.4, 1)]);
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const sparks = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xfde68a, size: .16, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+    g.add(crystal, edges, sparks);
+    updaters.push((t, dt) => {
+      crystal.rotation.y += dt * .5; edges.rotation.y = crystal.rotation.y;
+      sg.setDrawRange(0, Math.min(prCount, MAX));
+      seeds.forEach(([r, a, y, s], i) => pos.set([Math.cos(a + t * s) * r, y + Math.sin(t * s * 2 + a) * .2, Math.sin(a + t * s) * r], i * 3));
+      sg.attributes.position.needsUpdate = true;
+    });
+    return { group: g, size: 1.8 };
+  },
+  projects(c) { // ringed planet; the moons are added separately
+    const g = new THREE.Group();
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(1.3, 48, 48), std(c, { emissiveIntensity: .2 }));
+    const band = new THREE.Mesh(new THREE.RingGeometry(1.7, 2.4, 96), glow(c, .22));
+    band.material.side = THREE.DoubleSide; band.rotation.x = -Math.PI / 2.4;
+    g.add(planet, band, new THREE.Mesh(new THREE.SphereGeometry(1.45, 24, 24), wire(0xffffff, .08)));
+    updaters.push((t, dt) => { planet.rotation.y += dt * .3; band.rotation.z += dt * .1; });
+    return { group: g, size: 1.6 };
+  },
+  research(c) { // DNA double helix, for the scRNA-seq dissertation
+    const g = new THREE.Group(), N = 26, bead = new THREE.SphereGeometry(.09, 12, 12);
+    const rung = [];
+    for (let i = 0; i < N; i++) {
+      const a = i * .5, y = (i - N / 2) * .13, x = Math.cos(a) * .7, z = Math.sin(a) * .7;
+      const b1 = new THREE.Mesh(bead, glow(c)); b1.position.set(x, y, z);
+      const b2 = new THREE.Mesh(bead, glow(0xfb7185)); b2.position.set(-x, y, -z);
+      g.add(b1, b2);
+      rung.push(x, y, z, -x, y, -z);
+    }
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute(rung, 3));
+    g.add(new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: .25 })));
+    g.rotation.z = .35;
+    updaters.push((t, dt) => { g.rotation.y += dt * .8; });
+    return { group: g, size: 1.8 };
+  },
+  stack(c) { // breathing cube of cubes, one per tool
+    const g = new THREE.Group(), cubes = [], box = new THREE.BoxGeometry(.4, .4, .4);
+    const palette = [c, 0x22d3ee, 0xa78bfa, 0x34d399];
+    for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++) {
+      const m = new THREE.Mesh(box, std(palette[cubes.length % 4], { emissiveIntensity: .6 }));
+      m.userData.home = new THREE.Vector3(x, y, z).multiplyScalar(.5);
+      g.add(m); cubes.push(m);
+    }
+    updaters.push((t, dt) => {
+      g.rotation.x += dt * .3; g.rotation.y += dt * .45;
+      const spread = 1 + Math.max(0, Math.sin(t * 1.3)) * .45;
+      cubes.forEach((m, i) => { m.position.copy(m.userData.home).multiplyScalar(spread); m.rotation.y = Math.sin(t + i) * .5; });
+    });
+    return { group: g, size: 1.5 };
+  },
+  contact(c) { // beacon sending out signal waves
+    const g = new THREE.Group();
+    const mast = new THREE.Mesh(new THREE.ConeGeometry(.35, 1.4, 6), std(0x94a3b8, { emissiveIntensity: .15 }));
+    mast.position.y = -.4;
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(.22, 20, 20), glow(c));
+    tip.position.y = .45;
+    g.add(mast, tip);
+    const waves = [0, 1, 2].map(i => {
+      const w = new THREE.Mesh(new THREE.TorusGeometry(1, .025, 8, 80), glow(c));
+      w.position.y = .45; w.rotation.x = Math.PI / 2; g.add(w); return w;
+    });
+    updaters.push(t => {
+      tip.scale.setScalar(1 + Math.sin(t * 6) * .25);
+      waves.forEach((w, i) => { const k = (t * .6 + i / 3) % 1; w.scale.setScalar(.3 + k * 2.2); w.material.opacity = 1 - k; });
+    });
+    return { group: g, size: 1.5 };
+  },
+};
 
-// Planets
-const labelsEl = document.getElementById('labels');
-const dock = document.getElementById('dock');
-const planets = SECTIONS.map((s, i) => {
+const MOON_GEO = {
+  ico: () => new THREE.IcosahedronGeometry(.42, 0), dodeca: () => new THREE.DodecahedronGeometry(.42, 0),
+  octa: () => new THREE.OctahedronGeometry(.45, 0), tetra: () => new THREE.TetrahedronGeometry(.5, 0),
+  box: () => new THREE.BoxGeometry(.6, .6, .6), torus: () => new THREE.TorusGeometry(.32, .13, 12, 40),
+  cone: () => new THREE.ConeGeometry(.35, .7, 8),
+};
+
+// ---------- Build the system ----------
+const labelsEl = document.getElementById('labels'), dock = document.getElementById('dock');
+const entries = []; // everything clickable: { id, kind, holder, size, fit, html, label, hit, color }
+const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false });
+
+function addEntry(e, labelClass = '') {
+  e.label = document.createElement('div');
+  e.label.className = 'label ' + labelClass; e.label.textContent = e.title;
+  e.label.onclick = () => focus(e.id);
+  labelsEl.append(e.label);
+  e.hit = new THREE.Mesh(new THREE.SphereGeometry(e.size * 1.25, 12, 12), hitMat);
+  e.hit.userData.entry = e;
+  e.holder.add(e.hit);
+  entries.push(e);
+  return e;
+}
+
+SECTIONS.forEach((s, i) => {
   const pivot = new THREE.Group();
-  pivot.rotation.set((Math.random() - .5) * .25, i * 1.7, (Math.random() - .5) * .25);
+  pivot.rotation.set(rand(-.12, .12), i * 1.9, rand(-.12, .12));
   scene.add(pivot);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(s.orbit - .03, s.orbit + .03, 160),
-    new THREE.MeshBasicMaterial({ color: s.color, transparent: true, opacity: .18, side: THREE.DoubleSide }));
-  ring.rotation.x = -Math.PI / 2;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(s.orbit - .04, s.orbit + .04, 200), glow(s.color, .16));
+  ring.material.side = THREE.DoubleSide; ring.rotation.x = -Math.PI / 2;
   pivot.add(ring);
-  const mesh = new THREE.Mesh(new THREE.SphereGeometry(s.size, 40, 40),
-    new THREE.MeshStandardMaterial({ color: s.color, emissive: s.color, emissiveIntensity: .35, roughness: .45, metalness: .2 }));
-  mesh.position.x = s.orbit;
-  mesh.add(new THREE.Mesh(new THREE.IcosahedronGeometry(s.size * 1.35, 1),
-    new THREE.MeshBasicMaterial({ color: s.color, wireframe: true, transparent: true, opacity: .25 })));
-  mesh.userData.section = s;
-  pivot.add(mesh);
-
-  const label = document.createElement('div');
-  label.className = 'label'; label.textContent = s.title;
-  label.onclick = () => focus(s.id);
-  labelsEl.append(label);
+  const holder = new THREE.Group();
+  holder.position.x = s.orbit;
+  pivot.add(holder);
+  const { group, size } = BUILD[s.id](s.color);
+  holder.add(group);
+  const e = addEntry({ ...s, kind: 'section', holder, group, size, pivot });
 
   const btn = document.createElement('button');
   btn.textContent = s.title; btn.onclick = () => focus(s.id);
-  dock.append(btn);
-  return { s, pivot, mesh, label, btn };
+  dock.append(btn); e.btn = btn;
+
+  if (s.id === 'projects') PROJECTS.forEach((p, j) => {
+    const mp = new THREE.Group();
+    mp.rotation.set(rand(-.5, .5), j / PROJECTS.length * Math.PI * 2, rand(-.5, .5));
+    holder.add(mp);
+    const r = 3 + j * .45;
+    const orbitLine = new THREE.Mesh(new THREE.RingGeometry(r - .015, r + .015, 120), glow(p.color, .12));
+    orbitLine.material.side = THREE.DoubleSide; orbitLine.rotation.x = -Math.PI / 2;
+    mp.add(orbitLine);
+    const moonHolder = new THREE.Group();
+    moonHolder.position.x = r;
+    const moon = new THREE.Mesh(MOON_GEO[p.geo](), std(p.color, { flatShading: true, emissiveIntensity: .45 }));
+    moonHolder.add(moon);
+    mp.add(moonHolder);
+    const speed = .35 - j * .03;
+    updaters.push((t, dt) => {
+      if (!focused && !reduceMotion) mp.rotation.y += speed * dt;
+      moon.rotation.x += dt * .9; moon.rotation.y += dt * .6;
+    });
+    addEntry({ ...p, kind: 'project', holder: moonHolder, around: holder, group: moon, size: .5, fit: 4.2, html: () => projectHtml(p) }, 'moon');
+  });
 });
 
-// Interaction
+// ---------- Effects ----------
+const bursts = [];
+function burst(at, color) {
+  const n = 160, pos = new Float32Array(n * 3), vel = [];
+  for (let i = 0; i < n; i++) { pos.set(at.toArray(), i * 3); vel.push(new THREE.Vector3().randomDirection().multiplyScalar(rand(1.5, 6))); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size: .14, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scene.add(pts);
+  bursts.push({ pts, vel, life: 1 });
+}
+function stepBursts(dt) {
+  for (let i = bursts.length - 1; i >= 0; i--) {
+    const b = bursts[i], a = b.pts.geometry.attributes.position;
+    b.life -= dt * .9;
+    b.vel.forEach((v, k) => { v.multiplyScalar(1 - dt * 1.5); a.setXYZ(k, a.getX(k) + v.x * dt, a.getY(k) + v.y * dt, a.getZ(k) + v.z * dt); });
+    a.needsUpdate = true;
+    b.pts.material.opacity = Math.max(0, b.life);
+    if (b.life <= 0) { scene.remove(b.pts); b.pts.geometry.dispose(); b.pts.material.dispose(); bursts.splice(i, 1); }
+  }
+}
+
+// ---------- Interaction ----------
 const panel = document.getElementById('panel'), body = document.getElementById('panel-body');
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
-let focused = null, flying = false;
-const wantPos = new THREE.Vector3(), wantTarget = new THREE.Vector3();
+let focused = null, flying = false, hovered = null;
+const wantPos = new THREE.Vector3(), wantTarget = new THREE.Vector3(), tmpV = new THREE.Vector3(), side = new THREE.Vector3();
 
 function focus(id) {
-  focused = planets.find(p => p.s.id === id);
-  body.innerHTML = focused.s.html;
+  focused = entries.find(e => e.id === id);
+  body.innerHTML = focused.html();
+  body.scrollTop = 0; panel.scrollTop = 0;
   panel.classList.add('open');
-  planets.forEach(p => p.btn.setAttribute('aria-pressed', p === focused));
+  entries.forEach(e => e.btn && e.btn.setAttribute('aria-pressed', e === focused || (focused.kind === 'project' && e.id === 'projects')));
   controls.autoRotate = false;
   flying = true;
-  if (id === 'opensource') loadPrCount();
+  burst(focused.holder.getWorldPosition(tmpV).clone(), focused.color);
 }
 function unfocus() {
   focused = null;
   panel.classList.remove('open');
-  planets.forEach(p => p.btn.setAttribute('aria-pressed', false));
+  entries.forEach(e => e.btn && e.btn.setAttribute('aria-pressed', false));
   wantPos.copy(HOME_POS); wantTarget.copy(HOME_TARGET);
   controls.autoRotate = !reduceMotion;
   flying = true;
 }
 document.getElementById('close').onclick = unfocus;
+body.addEventListener('click', e => { const go = e.target.closest('[data-go]'); if (go) focus(go.dataset.go); });
 addEventListener('keydown', e => { if (e.key === 'Escape') unfocus(); });
 controls.addEventListener('start', () => { flying = false; });
 
 function pick(e) {
   ptr.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
   ray.setFromCamera(ptr, camera);
-  const hit = ray.intersectObjects(planets.map(p => p.mesh), false)[0];
-  return hit && planets.find(p => p.mesh === hit.object);
+  const hits = ray.intersectObjects(entries.map(x => x.hit), false);
+  // Prefer moons over the big Projects hitbox they sit inside.
+  return (hits.find(h => h.object.userData.entry.kind === 'project') || hits[0])?.object.userData.entry;
 }
 let downAt = 0;
 canvas.addEventListener('pointerdown', () => { downAt = performance.now(); });
 canvas.addEventListener('pointerup', e => {
   if (performance.now() - downAt > 250) return; // a drag, not a click
-  const p = pick(e);
-  if (p) focus(p.s.id);
+  const hit = pick(e);
+  if (hit) focus(hit.id);
 });
 canvas.addEventListener('pointermove', e => {
-  const p = pick(e);
-  canvas.style.cursor = p ? 'pointer' : 'grab';
-  planets.forEach(q => q.mesh.scale.setScalar(q === p ? 1.15 : 1));
+  hovered = pick(e);
+  canvas.style.cursor = hovered ? 'pointer' : 'grab';
 });
 
 // Live merged-PR count; the static fallback stays if the API is rate-limited.
-let prCount = null;
-async function loadPrCount() {
-  if (prCount === null) {
-    try {
-      const r = await fetch('https://api.github.com/search/issues?q=repo:kornia/kornia+author:mohansree14+is:pr+is:merged&per_page=1');
-      if (r.ok) prCount = (await r.json()).total_count;
-    } catch {}
-  }
-  const el = document.getElementById('pr-count');
-  if (el && prCount) el.textContent = prCount;
-}
+let prCount = 19;
+fetch('https://api.github.com/search/issues?q=repo:kornia/kornia+author:mohansree14+is:pr+is:merged&per_page=1')
+  .then(r => r.ok ? r.json() : null).then(j => { if (j?.total_count) prCount = j.total_count; }).catch(() => {});
 
-// Render loop
+// ---------- Loop ----------
 function resize() {
   renderer.setSize(innerWidth, innerHeight, false);
+  composer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
-const clock = new THREE.Clock(), v = new THREE.Vector3();
+const clock = new THREE.Clock();
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), .05);
-  if (!reduceMotion) {
-    core.rotation.y += dt * .25; core.rotation.x += dt * .08;
-    if (!focused) planets.forEach(p => { p.pivot.rotation.y += p.s.speed * dt; });
-    planets.forEach(p => { p.mesh.rotation.y += dt * .5; });
-  }
+  const dt = Math.min(clock.getDelta(), .05), t = clock.elapsedTime;
+  if (!reduceMotion) updaters.forEach(u => u(t, dt));
+  if (!focused && !reduceMotion) entries.forEach(e => { if (e.pivot) e.pivot.rotation.y += e.speed * dt; });
+  entries.forEach(e => e.group.scale.lerp(tmpV.setScalar(e === hovered || e === focused ? 1.18 : 1), .15));
+  stepBursts(dt);
+
   if (focused) {
-    focused.mesh.getWorldPosition(wantTarget);
-    // Sit just outside the planet, on the side facing away from the core, nudged up.
-    wantPos.copy(wantTarget).add(v.copy(wantTarget).setY(0).normalize().multiplyScalar(focused.s.size * 6).setY(focused.s.size * 2.5));
-    if (innerWidth > 700) wantPos.add(v.crossVectors(wantTarget, camera.up).normalize().multiplyScalar(-focused.s.size * 2.2));
+    focused.holder.getWorldPosition(wantTarget);
+    // Sit outside the object on the side facing away from what it orbits (the core, or a moon's planet), a little above it.
+    if (focused.around) focused.around.getWorldPosition(side); else side.set(0, 0, 0);
+    tmpV.copy(wantTarget).sub(side).setY(0);
+    if (tmpV.lengthSq() < 1e-6) tmpV.set(0, 0, 1);
+    tmpV.normalize();
+    // Moons: come in from the side so their planet's glow isn't the whole backdrop.
+    if (focused.around) tmpV.add(side.crossVectors(tmpV, camera.up).multiplyScalar(1.6)).normalize();
+    wantPos.copy(wantTarget).add(tmpV.multiplyScalar(focused.fit)).add(tmpV.set(0, focused.fit * .4, 0));
+    // On wide screens, shift the view so the object isn't hidden under the panel.
+    if (innerWidth > 700) {
+      side.subVectors(wantTarget, wantPos).cross(camera.up).normalize().multiplyScalar(focused.fit * .32);
+      wantPos.add(side); wantTarget.add(side);
+    }
   }
   if (flying) {
-    const k = 1 - Math.pow(.02, dt);
+    const k = 1 - Math.pow(.015, dt);
     camera.position.lerp(wantPos, k);
     controls.target.lerp(wantTarget, k);
-    if (camera.position.distanceTo(wantPos) < .05) flying = false;
+    if (camera.position.distanceTo(wantPos) < .03) flying = false;
+  } else if (focused) {
+    controls.target.lerp(wantTarget, .1);
   }
   controls.update();
-  renderer.render(scene, camera);
+  composer.render();
 
-  for (const p of planets) {
-    p.mesh.getWorldPosition(v).project(camera);
-    const visible = v.z < 1;
-    p.label.style.opacity = visible ? 1 : 0;
-    p.label.style.left = (v.x * .5 + .5) * innerWidth + 'px';
-    p.label.style.top = (-v.y * .5 + .5) * innerHeight + 'px';
+  const showMoons = focused && (focused.id === 'projects' || focused.kind === 'project');
+  for (const e of entries) {
+    e.holder.getWorldPosition(tmpV);
+    const dist = tmpV.distanceTo(camera.position);
+    tmpV.project(camera);
+    const visible = tmpV.z < 1 && (e.kind === 'section' || showMoons || e === hovered) && dist > e.size * 1.5 && e !== focused;
+    e.label.style.opacity = visible ? 1 : 0;
+    e.label.style.pointerEvents = visible ? 'auto' : 'none';
+    e.label.classList.toggle('hot', e === hovered);
+    e.label.style.left = (tmpV.x * .5 + .5) * innerWidth + 'px';
+    e.label.style.top = (-tmpV.y * .5 + .5) * innerHeight + 'px';
   }
 });
 document.getElementById('loading').remove();
+
+// Deep links: /#projects, /#bayes, ... open straight to that object.
+const fromHash = () => { const id = location.hash.slice(1); if (entries.some(e => e.id === id)) focus(id); };
+addEventListener('hashchange', fromHash); fromHash();
 </script>
 </body>
 </html>
